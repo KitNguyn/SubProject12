@@ -10,6 +10,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -88,8 +89,10 @@ void            begin_op();
 void            end_op();
 
 // mp.c
-extern int      ismp;
+extern int      ncpu;     // số lượng CPU
+extern int      ismp;     // hệ thống đa lõi hay không
 void            mpinit(void);
+
 
 // picirq.c
 void            picenable(int);

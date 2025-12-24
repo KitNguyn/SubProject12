@@ -28,7 +28,6 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
-
         
 # Cross-compiling (e.g., on Mac OS X)
 # TOOLPREFIX = i386-jos-elf
@@ -37,8 +36,7 @@ OBJS = \
 #TOOLPREFIX = 
 
 # Try to infer the correct TOOLPREFIX if not set
-ifndef TOOLPREFIX
-TOOLPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/dev/null 2>&1; \
+ifndef TOOLPREFOOLPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/dev/null 2>&1; \
 	then echo 'i386-jos-elf-'; \
 	elif objdump -i 2>&1 | grep 'elf32-i386' >/dev/null 2>&1; \
 	then echo ''; \
@@ -183,10 +181,9 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
-    _ps\
-	_cpu_loop\
-	_mixed_launcher\
-	_io_yielder
+	_cpu_bound\
+	_io_bound\
+        _ps\
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
 

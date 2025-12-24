@@ -8,9 +8,19 @@
 #include "traps.h"
 #include "spinlock.h"
 
+// ===== MLFQ tuning =====
+#define BOOST_TICKS 100   // mỗi 100 ticks boost 1 lần (đổi 50/200 tuỳ bạn)
+
+static inline int
+quantum_for_level(int lvl)
+{
+  // level 0: 1 tick, level 1: 2 ticks, level 2: 4 ticks, ...
+  return 1 << lvl;
+}
+
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
-extern uint vectors[];  // in vectors.S: array of 256 entry pointers
+extern uint vectors[]; // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
@@ -37,25 +47,48 @@ void
 trap(struct trapframe *tf)
 {
   if(tf->trapno == T_SYSCALL){
-    if(myproc()->killed)
+    if(myproc() && myproc()->killed)
       exit();
     myproc()->tf = tf;
     syscall();
-    if(myproc()->killed)
+    if(myproc() && myproc()->killed)
       exit();
     return;
   }
 
   switch(tf->trapno){
-  case T_IRQ0 + IRQ_TIMER:
+  case T_IRQ0 + IRQ_TIMER: {
+    // update global ticks on CPU0
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
       wakeup(&ticks);
       release(&tickslock);
+
+      // periodic priority boost (chống starvation)
+      if((ticks % BOOST_TICKS) == 0){
+        mlfq_boost_all();  // <-- hàm này bạn thêm trong proc.c
+      }
     }
+
+    // ===== MLFQ accounting theo timer tick =====
+    struct proc *p = myproc();
+    if(p && p->state == RUNNING){
+      p->ticks++;
+
+      // hết quantum -> demote + yield
+      if(p->ticks >= quantum_for_level(p->priority)){
+        p->ticks = 0;
+        if(p->priority < NQUEUE - 1)
+          p->priority++;
+        yield();
+      }
+    }
+
     lapiceoi();
     break;
+  }
+
   case T_IRQ0 + IRQ_IDE:
     ideintr();
     lapiceoi();
@@ -95,16 +128,11 @@ trap(struct trapframe *tf)
   }
 
   // Force process exit if it has been killed and is in user space.
-  // (If it is still executing in the kernel, let it keep running
-  // until it gets to the regular system call return.)
   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
     exit();
 
-  // Force process to give up CPU on clock tick.
-  // If interrupts were on while locks held, would need to check nlock.
-  if(myproc() && myproc()->state == RUNNING &&
-     tf->trapno == T_IRQ0+IRQ_TIMER)
-    yield();
+  // QUAN TRỌNG: bỏ yield() mặc định mỗi tick (RR)
+  // Vì MLFQ yield theo quantum đã làm ở case TIMER rồi.
 
   // Check if the process has been killed since we yielded
   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
